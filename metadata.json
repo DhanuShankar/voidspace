@@ -1,0 +1,5 @@
+{
+  "name": "VOID - Vibe-Operated Intelligent Developer",
+  "description": "A fully AI-powered browser-based IDE with Monaco editor, integrated terminal, and Claude-powered AI agent.",
+  "requestFramePermissions": []
+}

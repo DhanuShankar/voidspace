@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-void-bg: #0a0a0f;
+  --color-void-violet: #7c3aed;
+  --color-void-cyan: #06b6d4;
+  --color-void-panel: #12121a;
+  --color-void-border: #1f1f2e;
+}
+
+@layer base {
+  body {
+    @apply bg-void-bg text-zinc-200 antialiased;
+  }
+  
+  ::selection {
+    @apply bg-void-violet/30 text-white;
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom Scrollbar for VOID Theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-void-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-void-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2d2d3f;
+}
+
+/* Monaco Editor Overrides */
+.monaco-editor {
+  padding-top: 10px;
+}

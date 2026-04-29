@@ -70,7 +70,7 @@ export class MonacoSetup {
     this.setupVSCodeAPI();
 
     // Register built-in themes
-    this.themeManager.registerBuiltInThemes(monaco);
+    this.themeManager.registerBuiltInThemesForMonaco(monaco);
 
     // Load installed extensions
     if (this.options.extensions) {

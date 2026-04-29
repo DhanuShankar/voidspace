@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Mail, Loader, ArrowRight, Github } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Mail, Loader, ArrowRight } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -17,6 +17,48 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [agreed, setAgreed] = useState(false);
 
   if (!isOpen) return null;
+
+  // Listen for Google OAuth callback
+  useEffect(() => {
+    const handleGoogleCallback = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
+
+      if (code && state === 'google_auth') {
+        try {
+          setLoading(true);
+          const response = await fetch('/api/auth/google/callback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.error || 'Google authentication failed');
+          }
+
+          // Store token
+          localStorage.setItem('authToken', data.token);
+          localStorage.setItem('userData', JSON.stringify(data.user));
+
+          onSuccess(data.user);
+          onClose();
+
+          // Clean URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch (err: any) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    handleGoogleCallback();
+  }, [onClose, onSuccess]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,12 +99,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   const handleGoogleAuth = async () => {
     setLoading(true);
+    setError('');
     try {
-      const response = await fetch('/api/auth/google/url');
+      const response = await fetch('/api/auth/google/url', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
       const data = await response.json();
-      window.location.href = data.url;
-    } catch (error) {
-      setError('Google auth failed');
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to get Google auth URL');
+      }
+
+      // Store state to verify callback
+      const state = 'google_auth';
+      const separator = data.url.includes('?') ? '&' : '?';
+      const authUrl = `${data.url}${separator}state=${state}`;
+
+      window.location.href = authUrl;
+    } catch (err: any) {
+      setError(err.message || 'Google auth failed');
       setLoading(false);
     }
   };
@@ -202,7 +259,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
             />
           </svg>
-          Google
+          Continue with Google
         </button>
 
         <div className="mt-6 text-center text-sm">

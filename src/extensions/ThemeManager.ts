@@ -92,7 +92,7 @@ export class ThemeManager {
     };
   }
 
-  registerBuiltInThemes(monacoInstance: typeof monaco): void {
+  registerBuiltInThemesForMonaco(monacoInstance: typeof monaco): void {
     for (const [name, themeData] of Object.entries(this.customThemes)) {
       monacoInstance.editor.defineTheme(name, themeData);
     }

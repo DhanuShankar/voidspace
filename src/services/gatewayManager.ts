@@ -247,28 +247,47 @@ export class DockerGateway extends BaseGateway {
   }
 }
 
+import { ColabSessionManager } from './colabSessionManager';
+import { ColabKernelBridge } from './colabKernelBridge';
+import { ColabSession } from './colabKernelBridge';
+
 /**
  * Colab Gateway - executes on Google Colab with T4 GPU
  */
 export class ColabGateway extends BaseGateway {
+  private sessionManager: ColabSessionManager | null = null;
+
   async initialize(): Promise<void> {
     console.log('✓ Colab gateway initialized');
+    this.sessionManager = new ColabSessionManager();
   }
 
   async execute(request: GatewayExecutionRequest): Promise<GatewayExecutionResponse> {
     const startTime = Date.now();
 
     try {
-      // Would use ColabKernelBridge to execute code
-      const mockOutput = `Executed on Colab T4: ${request.code}`;
+      if (!this.sessionManager) {
+        await this.initialize();
+      }
+
+      // Start a Colab session if not active
+      const sessionInfo = this.sessionManager.getSessionInfo();
+      if (!sessionInfo?.isActive) {
+        // This would need user's access token - in production, get from auth service
+        throw new Error('Colab session not active. User must authenticate first.');
+      }
+
+      // Execute code via session manager
+      const result = await this.sessionManager.executeCode(request.code, request.language || 'python');
 
       return {
-        success: true,
-        output: mockOutput,
-        stdout: mockOutput,
-        stderr: '',
-        executionTime: Date.now() - startTime,
-        exitCode: 0,
+        success: !result.error,
+        output: result.output,
+        error: result.error || undefined,
+        stdout: result.output,
+        stderr: result.error || '',
+        executionTime: result.executionTime,
+        exitCode: result.error ? 1 : 0,
       };
     } catch (error: any) {
       return {
@@ -295,12 +314,28 @@ export class ColabGateway extends BaseGateway {
   }
 
   async healthCheck(): Promise<boolean> {
-    // Would check Colab API connectivity
-    return true;
+    try {
+      if (!this.sessionManager) {
+        await this.initialize();
+      }
+      return this.sessionManager?.isActive() ?? false;
+    } catch {
+      return false;
+    }
   }
 
   async cleanup(): Promise<void> {
+    if (this.sessionManager) {
+      await this.sessionManager.shutdown();
+    }
     console.log('✓ Colab gateway cleaned up');
+  }
+
+  /**
+   * Get the underlying Colab session manager
+   */
+  getSessionManager(): ColabSessionManager | null {
+    return this.sessionManager;
   }
 }
 
@@ -513,23 +548,13 @@ export class GatewayManager {
 export const gatewayManager = new GatewayManager();
 
 // Register default gateways
+// NOTE: ColabGateway is registered in server.ts after colabSessionManager is available
 gatewayManager.registerGateway(
   'local',
   new LocalGateway({
     type: 'local',
     name: 'Local Machine',
     description: 'Execute on local machine',
-    enabled: true,
-    config: {},
-  })
-);
-
-gatewayManager.registerGateway(
-  'colab',
-  new ColabGateway({
-    type: 'colab',
-    name: 'Google Colab (T4 GPU)',
-    description: 'Execute on Google Colab with T4 GPU (4-12 hours)',
     enabled: true,
     config: {},
   })

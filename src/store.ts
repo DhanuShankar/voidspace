@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { Extension } from '../extensions/types';
 
 export interface FileNode {
   id: string;
@@ -47,8 +48,15 @@ interface IDEState {
   showMinimap: boolean;
   showLineNumbers: boolean;
   autoSave: boolean;
-  
-  // Actions
+
+  // Extension State
+  installedExtensions: Extension[];
+  activeExtensions: string[];
+  selectedExtensionId: string | null;
+  extensionSearchQuery: string;
+  autoUpdateEnabled: boolean;
+
+  // Actions...
   setFontSize: (size: number) => void;
   setTabSize: (size: number) => void;
   setWordWrap: (wrap: 'on' | 'off') => void;
@@ -89,6 +97,42 @@ interface IDEState {
   setComputeConnected: (connected: boolean) => void;
   setNgrokToken: (token: string) => void;
   setShowSetupModal: (show: boolean) => void;
+  
+  // Colab Session State
+  colabSessionId: string | null;
+  colabActive: boolean;
+  colabRemainingTime: string;
+  colabMetrics: { executedCells: number; totalExecutionTime: number; gpuUtilization?: number } | null;
+  setColabSessionId: (id: string | null) => void;
+  setColabActive: (active: boolean) => void;
+  setColabRemainingTime: (time: string) => void;
+  setColabMetrics: (metrics: any) => void;
+  
+  // Gateway State
+  activeGateway: string;
+  availableGateways: string[];
+  isGatewayConnecting: boolean;
+  setActiveGateway: (gateway: string) => void;
+  setAvailableGateways: (gateways: string[]) => void;
+  setIsGatewayConnecting: (connecting: boolean) => void;
+  
+  // Collaboration State
+  collaborationMode: boolean;
+  collaborators: Array<{ id: string; name: string; color: string; cursor?: { line: number; column: number } }>;
+  documentId: string | null;
+  setCollaborationMode: (mode: boolean) => void;
+  setCollaborators: (collaborators: any[]) => void;
+  setDocumentId: (id: string | null) => void;
+  addCollaborator: (collaborator: any) => void;
+  removeCollaborator: (id: string) => void;
+  
+  // AI State
+  aiEnabled: boolean;
+  aiModel: 'claude' | 'gpt' | 'gemini';
+  aiCompletionEnabled: boolean;
+  setAiEnabled: (enabled: boolean) => void;
+  setAiModel: (model: 'claude' | 'gpt' | 'gemini') => void;
+  setAiCompletionEnabled: (enabled: boolean) => void;
 }
 
 const initialFiles: FileNode[] = [
@@ -124,6 +168,13 @@ export const useStore = create<IDEState>((set) => ({
   showMinimap: false,
   showLineNumbers: true,
   autoSave: false,
+
+  // Extension State
+  installedExtensions: [],
+  activeExtensions: [],
+  selectedExtensionId: null,
+  extensionSearchQuery: '',
+  autoUpdateEnabled: true,
   
   storageProvider: 'local',
   isStorageConnected: false,
@@ -131,6 +182,27 @@ export const useStore = create<IDEState>((set) => ({
   isComputeConnected: false,
   ngrokToken: '',
   showSetupModal: false,
+  
+  // Colab Defaults
+  colabSessionId: null,
+  colabActive: false,
+  colabRemainingTime: '0h 0m',
+  colabMetrics: null,
+  
+  // Gateway Defaults
+  activeGateway: 'colab',
+  availableGateways: ['local', 'colab'],
+  isGatewayConnecting: false,
+  
+  // Collaboration Defaults
+  collaborationMode: false,
+  collaborators: [],
+  documentId: null,
+  
+  // AI Defaults
+  aiEnabled: true,
+  aiModel: 'claude',
+  aiCompletionEnabled: true,
 
   setFontSize: (size) => set({ fontSize: size }),
   setTabSize: (size) => set({ tabSize: size }),
@@ -219,4 +291,59 @@ export const useStore = create<IDEState>((set) => ({
   setComputeConnected: (connected) => set({ isComputeConnected: connected }),
   setNgrokToken: (token) => set({ ngrokToken: token }),
   setShowSetupModal: (show) => set({ showSetupModal: show }),
+  
+  // Colab Actions
+  setColabSessionId: (id) => set({ colabSessionId: id }),
+  setColabActive: (active) => set({ colabActive: active }),
+  setColabRemainingTime: (time) => set({ colabRemainingTime: time }),
+  setColabMetrics: (metrics) => set({ colabMetrics: metrics }),
+  
+  // Gateway Actions
+  setActiveGateway: (gateway) => set({ activeGateway: gateway }),
+  setAvailableGateways: (gateways) => set({ availableGateways: gateways }),
+  setIsGatewayConnecting: (connecting) => set({ isGatewayConnecting: connecting }),
+  
+  // Collaboration Actions
+  setCollaborationMode: (mode) => set({ collaborationMode: mode }),
+  setCollaborators: (collaborators) => set({ collaborators }),
+  setDocumentId: (id) => set({ documentId: id }),
+  addCollaborator: (collaborator) => set((state) => ({
+    collaborators: [...state.collaborators, collaborator]
+  })),
+  removeCollaborator: (id) => set((state) => ({
+    collaborators: state.collaborators.filter(c => c.id !== id)
+  })),
+  
+  // AI Actions
+  setAiEnabled: (enabled) => set({ aiEnabled: enabled }),
+  setAiModel: (model) => set({ aiModel: model }),
+  setAiCompletionEnabled: (enabled) => set({ aiCompletionEnabled: enabled }),
+
+  // Extension Actions
+  setInstalledExtensions: (extensions) => set({ installedExtensions: extensions }),
+  addInstalledExtension: (extension) => set((state) => ({
+    installedExtensions: [...state.installedExtensions, extension],
+    activeExtensions: extension.enabled ? [...state.activeExtensions, extension.id] : state.activeExtensions,
+  })),
+  removeInstalledExtension: (extensionId) => set((state) => ({
+    installedExtensions: state.installedExtensions.filter(e => e.id !== extensionId),
+    activeExtensions: state.activeExtensions.filter(id => id !== extensionId),
+  })),
+  toggleExtensionEnabled: (extensionId) => set((state) => {
+    const extension = state.installedExtensions.find(e => e.id === extensionId);
+    if (!extension) return state;
+
+    const enabled = !extension.enabled;
+    return {
+      installedExtensions: state.installedExtensions.map(e =>
+        e.id === extensionId ? { ...e, enabled } : e
+      ),
+      activeExtensions: enabled
+        ? [...state.activeExtensions, extensionId]
+        : state.activeExtensions.filter(id => id !== extensionId),
+    };
+  }),
+  setSelectedExtension: (id) => set({ selectedExtensionId: id }),
+  setExtensionSearchQuery: (query) => set({ extensionSearchQuery: query }),
+  setAutoUpdateEnabled: (enabled) => set({ autoUpdateEnabled: enabled }),
 }));

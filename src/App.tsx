@@ -13,33 +13,128 @@ import { ExtensionsPanel } from './components/ExtensionsPanel';
 import { SettingsModal } from './components/SettingsModal';
 import { OnboardingFlow } from './components/OnboardingFlow';
 import { DeployModal } from './components/DeployModal';
+import { LandingPage } from './components/LandingPage';
+import { AuthModal } from './components/AuthModal';
 import { useStore } from './store';
-import { 
-  Layout, 
-  Files, 
-  Terminal as TerminalIcon, 
-  MessageSquare, 
-  Search, 
-  Settings, 
-  Github, 
-  Play,
-  Share2,
-  Command,
-  Zap,
-  Cloud,
-  Code,
-  GitBranch,
-  Blocks,
-  AlertCircle,
-  CheckCircle2,
-  CloudUpload,
-  Sparkles,
-  PanelLeft
-} from 'lucide-react';
+import { PanelLeft } from 'lucide-react';
 import { cn } from './lib/utils';
 
 export default function App() {
-  const { 
+  const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+  const [showAuthModal, setShowAuthModal] = React.useState(false);
+  const [user, setUser] = React.useState<any>(null);
+
+  // Check if user is logged in on mount
+  React.useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    const userData = localStorage.getItem('userData');
+    if (token && userData) {
+      setIsLoggedIn(true);
+      setUser(JSON.parse(userData));
+    }
+  }, []);
+
+  const handleGetStarted = () => {
+    if (isLoggedIn) {
+      // User is already logged in, show IDE
+    } else {
+      // Show auth modal
+      setShowAuthModal(true);
+    }
+  };
+
+  const handleAuthSuccess = (userData: any) => {
+    setUser(userData);
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userData');
+    setIsLoggedIn(false);
+    setUser(null);
+  };
+
+  // Show landing page if not logged in
+  if (!isLoggedIn) {
+    return (
+      <>
+        <LandingPage onGetStarted={handleGetStarted} />
+        <AuthModal
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+          onSuccess={handleAuthSuccess}
+        />
+      </>
+    );
+  }
+
+  // Show IDE if logged in
+  return <IDEInterface user={user} onLogout={handleLogout} />;
+}
+
+// IDE Interface Component
+function IDEInterface({ user, onLogout }: { user: any; onLogout: () => void }) {
+  const {
+    sidebarVisible,
+    terminalVisible,
+    chatVisible,
+    toggleSidebar,
+    toggleTerminal,
+    toggleChat,
+    openTabs,
+    activeFileId,
+    setActiveFile,
+    closeTab,
+    files,
+    setShowSetupModal,
+    storageProvider,
+    isComputeConnected,
+    mobileTab,
+    setMobileTab,
+    rightPanelTab,
+    setRightPanelTab,
+    setCommandPaletteOpen,
+    activeSidebarTab,
+    setActiveSidebarTab,
+    setShowSettingsModal,
+    setShowDeployModal,
+    saveFile,
+    deviceType,
+    isLandscape,
+    setDeviceState,
+    vibeMode,
+    setVibeMode,
+    closeAllTabs,
+    closeOtherTabs,
+  } = useStore();
+
+  const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number; tabId: string } | null>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  React.useEffect(() => {
+    const getDevice = () => {
+      const w = window.innerWidth;
+      if (w < 640) return 'phone';
+      if (w < 1024) return 'tablet';
+      return 'desktop';
+    };
+
+    const handleResize = () => {
+      const type = getDevice();
+      const landscape = window.innerWidth > window.innerHeight;
+      setDeviceState(type, landscape);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [setDeviceState]); 
     sidebarVisible, 
     terminalVisible, 
     chatVisible,

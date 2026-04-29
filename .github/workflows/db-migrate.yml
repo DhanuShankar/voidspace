@@ -1,0 +1,70 @@
+name: Database Migrations
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'deploy/migrations/**'
+      - '.github/workflows/db-migrate.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  migrate:
+    name: Database Migration
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'production' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js for migration runner
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migrations
+        run: |
+          echo "Running database migrations..."
+          # Use docker-compose to run migrations
+          docker-compose -f docker-compose.yml run --rm app npm run migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NODE_ENV: ${{ inputs.environment || 'production' }}
+
+      - name: Verify migration
+        run: |
+          echo "Verifying migration status..."
+          # Add verification command
+          docker-compose -f docker-compose.yml exec -T postgres psql -U void -d void -c "SELECT * FROM schema_migrations ORDER BY version DESC LIMIT 5;"
+
+      - name: Backup database
+        if: inputs.environment == 'production'
+        run: |
+          echo "Creating database backup..."
+          BACKUP_FILE="backup_$(date +%Y%m%d_%H%M%S).sql"
+          docker-compose -f docker-compose.yml exec -T postgres pg_dump -U void void > "$BACKUP_FILE"
+          echo "Backup saved to $BACKUP_FILE"
+
+      - name: Upload migration logs
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: migration-logs
+          path: logs/*.log
+          retention-days: 30

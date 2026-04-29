@@ -1,0 +1,75 @@
+# ============================================================================
+# VOID Cloud IDE - Grafana Data Source Provisioning
+# ============================================================================
+
+apiVersion: 1
+
+datasources:
+  # ========================================================================
+  # Prometheus
+  # ========================================================================
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: "15s"
+    version: 1
+
+  # ========================================================================
+  # Loki - Log Aggregation
+  # ========================================================================
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 1000
+      timeout: 60
+    version: 1
+
+  # ========================================================================
+  # PostgreSQL
+  # ========================================================================
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: void
+    user: void
+    jsonData:
+      sslmode: "disable"
+      postgresVersion: 16
+      timescaledb: false
+    secureJsonData:
+      password: void
+    version: 1
+
+  # ========================================================================
+  # Redis
+  # ========================================================================
+  - name: Redis
+    type: redis-datasource
+    access: proxy
+    url: redis:6379
+    jsonData:
+      pool_size: 10
+      timeout: 10
+      ping_interval: 0
+    version: 1
+
+# ============================================================================
+# Dashboard Provisioning
+# ============================================================================
+providers:
+  - name: 'VOID Cloud IDE'
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

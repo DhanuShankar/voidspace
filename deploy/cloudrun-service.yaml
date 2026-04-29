@@ -1,0 +1,129 @@
+# ============================================================================
+# VOID Cloud IDE - Cloud Run Configuration
+# ============================================================================
+# Service Configuration
+service:
+  name: void-cloud-ide
+  namespace: default
+  region: us-central1
+
+# Container Configuration
+container:
+  image: gcr.io/${PROJECT_ID}/void-cloud-ide:${TAG}
+  port: 3000
+  command: []
+  args: []
+
+# Resources
+resources:
+  limits:
+    cpu: "2"
+    memory: "4Gi"
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+
+# Concurrency (set to 1 for WebSocket apps)
+concurrency: 50
+
+# Maximum instance count for auto-scaling
+max-instances: 100
+
+# Minimum instance count for warm starts
+min-instances: 1
+
+# Timeouts (increase for WebSocket connections)
+timeout: 3600
+health-check-timeout: 30
+
+# Environment Variables
+env:
+  - name: NODE_ENV
+    value: "production"
+  - name: PORT
+    value: "3000"
+  - name: HOST
+    value: "0.0.0.0"
+  - name: DATABASE_URL
+    valueFrom:
+      secretKeyRef:
+        name: void-db-credentials
+        key: url
+  - name: REDIS_URL
+    valueFrom:
+      secretKeyRef:
+        name: void-redis-credentials
+        key: url
+  - name: ANTHROPIC_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: void-api-keys
+        key: anthropic
+  - name: GEMINI_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: void-api-keys
+        key: gemini
+  - name: GOOGLE_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: void-oauth-credentials
+        key: client-id
+  - name: GOOGLE_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: void-oauth-credentials
+        key: client-secret
+  - name: JWT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: void-secrets
+        key: jwt-secret
+  - name: SESSION_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: void-secrets
+        key: session-secret
+
+# Secrets
+secrets:
+  - name: void-db-credentials
+    versions:
+      - version: latest
+  - name: void-redis-credentials
+    versions:
+      - version: latest
+  - name: void-api-keys
+    versions:
+      - version: latest
+  - name: void-oauth-credentials
+    versions:
+      - version: latest
+  - name: void-secrets
+    versions:
+      - version: latest
+
+# VPC Connector (for private networking)
+vpc-connector: void-vpc-connector
+
+# Cloud SQL Integration (if using Cloud SQL)
+# cloudsql-instances: ${PROJECT_ID}:us-central1:void-db
+
+# Ingress settings
+ingress:
+  allow-unauthenticated: false  # Use IAM for authentication
+
+# Identity and Access
+service-account: void-service-account@${PROJECT_ID}.iam.gserviceaccount.com
+
+# Labels for organization
+labels:
+  app: void-cloud-ide
+  environment: production
+  managed-by: terraform
+
+# Annotations
+annotations:
+  run.googleapis.com/ingress: all
+  run.googleapis.com/ingress-status: all
+  run.googleapis.com/client-name: cloud-run-client

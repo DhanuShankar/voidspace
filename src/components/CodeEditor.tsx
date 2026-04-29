@@ -3,6 +3,7 @@ import Editor, { useMonaco } from '@monaco-editor/react';
 import { useStore } from '../store';
 import { ChevronLeft, ChevronRight, CornerDownLeft, Sparkles, Loader2, AlignLeft, WrapText, Map } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
+import { MonacoSetup } from '../editor/MonacoSetup';
 
 export const CodeEditor: React.FC = () => {
   const { 
@@ -18,6 +19,30 @@ export const CodeEditor: React.FC = () => {
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiEditing, setIsAiEditing] = useState(false);
   const aiInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize Monaco extension system
+  useEffect(() => {
+    let monacoSetup: MonacoSetup | null = null;
+
+    if (monaco && activeFile) {
+      // Initialize extension system
+      monacoSetup = new MonacoSetup({
+        container: document.getElementById('monaco-container')!,
+        theme: 'void-dark',
+        language: getLanguage(activeFile.name),
+        value: activeFile.content,
+        autoUpdate: true,
+      });
+
+      monacoSetup.initialize().then(() => {
+        console.log('Monaco extension system initialized');
+      });
+
+      return () => {
+        monacoSetup?.dispose();
+      };
+    }
+  }, [monaco, activeFile]);
 
   useEffect(() => {
     if (autoSave && activeFile?.isDirty) {
@@ -186,7 +211,7 @@ Return ONLY the modified code. Do not include markdown formatting like \`\`\`jav
           <Map size={14} />
         </button>
       </div>
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative" id="monaco-container">
         {showAiEdit && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-[400px] bg-void-panel border border-void-violet rounded-lg shadow-[0_0_30px_rgba(124,58,237,0.3)] p-2 animate-in fade-in slide-in-from-top-4">
             <div className="flex items-center gap-2 bg-void-bg border border-void-border rounded px-3 py-2">

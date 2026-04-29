@@ -1,0 +1,165 @@
+# ============================================================================
+# VOID Cloud IDE - Monitoring Stack Override
+# ============================================================================
+# This file adds the monitoring stack when using:
+#   docker-compose -f docker-compose.monitor.yml up -d
+#
+# It includes:
+# - node-exporter (host metrics)
+# - postgres-exporter (database metrics)
+# - redis-exporter (cache metrics)
+# - cAdvisor (container metrics)
+# ============================================================================
+
+version: '3.8'
+
+x-common: &common
+  networks:
+    - void-network
+
+services:
+  # ========================================================================
+  # Node Exporter - Host Metrics
+  # ========================================================================
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: void-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    <<: *common
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ========================================================================
+  # PostgreSQL Exporter
+  # ========================================================================
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    container_name: void-postgres-exporter
+    restart: unless-stopped
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://void:void@postgres:5432/void?sslmode=disable"
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/prometheus/postgres-queries.yaml
+    volumes:
+      - ./monitoring/postgres/postgres-queries.yaml:/etc/prometheus/postgres-queries.yaml:ro
+    <<: *common
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ========================================================================
+  # Redis Exporter
+  # ========================================================================
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: void-redis-exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    <<: *common
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ========================================================================
+  # cAdvisor - Container Metrics
+  # ========================================================================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: void-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    <<: *common
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8080/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ========================================================================
+  # Alertmanager - Alert Management
+  # ========================================================================
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: void-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager
+      - alertmanager-data:/data
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/data'
+      - '--web.listen-address=:9093'
+      - '--web.external-url=http://localhost:9093'
+    <<: *common
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+
+networks:
+  void-network:
+    external: true
+
+volumes:
+  alertmanager-data:
+    driver: local

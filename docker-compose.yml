@@ -1,0 +1,275 @@
+# ============================================================================
+# VOID Cloud IDE - Docker Compose Configuration
+# Supports: Development, Staging, Production
+# ============================================================================
+
+version: '3.8'
+
+x-common-variables: &common-variables
+  NODE_ENV: ${NODE_ENV:-production}
+  PORT: 3000
+
+x-common-volumes: &common-volumes
+  - ./logs:/app/logs
+  - ./data:/app/data
+
+services:
+  # ========================================================================
+  # Main Application Service
+  # ========================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: void-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      <<: *common-variables
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://void:void@postgres:5432/void}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      SESSION_SECRET: ${SESSION_SECRET}
+    volumes:
+      <<: *common-volumes
+      - ./uploads:/app/uploads
+    networks:
+      - void-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Resource limits for auto-scaling
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    # Health check
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ========================================================================
+  # PostgreSQL Database
+  # ========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: void-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: void
+      POSTGRES_PASSWORD: void
+      POSTGRES_DB: void
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - void-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U void"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========================================================================
+  # Redis Cache & Session Store
+  # ========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: void-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - void-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ========================================================================
+  # Nginx Reverse Proxy
+  # ========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: void-nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./logs/nginx:/var/log/nginx
+      - ./dist:/usr/share/nginx/html:ro
+    networks:
+      - void-network
+    depends_on:
+      - app
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # ========================================================================
+  # Prometheus - Metrics Collection
+  # ========================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: void-prometheus
+    restart: unless-stopped
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - void-network
+    depends_on:
+      - app
+
+  # ========================================================================
+  # Grafana - Metrics Visualization
+  # ========================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: void-grafana
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: ${GRAFANA_PLUGINS:-redis-datasource}
+    networks:
+      - void-network
+    depends_on:
+      - prometheus
+      - app
+
+  # ========================================================================
+  # Loki - Log Aggregation
+  # ========================================================================
+  loki:
+    image: grafana/loki:latest
+    container_name: void-loki
+    restart: unless-stopped
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./monitoring/loki:/etc/loki
+      - loki-data:/loki
+    command: -config.file=/etc/loki/loki-config.yaml
+    networks:
+      - void-network
+
+  # ========================================================================
+  # Promtail - Log Collection
+  # ========================================================================
+  promtail:
+    image: grafana/promtail:latest
+    container_name: void-promtail
+    restart: unless-stopped
+    volumes:
+      - ./logs:/var/log/void
+      - ./monitoring/promtail:/etc/promtail
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/promtail.yaml
+    networks:
+      - void-network
+    depends_on:
+      - loki
+
+  # ========================================================================
+  # pgAdmin - Database Management (optional)
+  # ========================================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: void-pgadmin
+    restart: unless-stopped
+    ports:
+      - "${PGADMIN_PORT:-5050):80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@void.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_LISTEN_PORT: 80
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - void-network
+    profiles:
+      - tools
+
+  # ========================================================================
+  # Mailhog - Email Testing (development)
+  # ========================================================================
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: void-mailhog
+    restart: unless-stopped
+    ports:
+      - "${MAILHOG_PORT:-1025):1025"
+      - "${MAILHOG_UI_PORT:-8025):8025"
+    networks:
+      - void-network
+    profiles:
+      - dev
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  void-network:
+    driver: bridge
+    name: void-network
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  loki-data:
+    driver: local
+  pgadmin-data:
+    driver: local

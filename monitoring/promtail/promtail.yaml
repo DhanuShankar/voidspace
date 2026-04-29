@@ -1,0 +1,111 @@
+# ============================================================================
+# VOID Cloud IDE - Promtail Configuration
+# ============================================================================
+# Promtail collects logs from containers and forwards them to Loki
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # ========================================================================
+  # Application Logs
+  # ========================================================================
+  - job_name: void-app
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: void-app
+          app: void-cloud-ide
+          environment: production
+          __path__: /var/log/void/app-*.log
+    pipeline_stages:
+      - docker: {}
+      - regex:
+          expression: '^(?P<timestamp>[\d-]+T[\d:.]+Z)\s+(?P<level>\w+)\s+\[(?P<logger>[^\]]+)\]\s+(?P<message>.*)$'
+      - labels:
+          level:
+          logger:
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02T15:04:05Z"
+
+  # ========================================================================
+  # Docker Container Logs
+  # ========================================================================
+  - job_name: docker-containers
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: docker
+          __path__: /var/lib/docker/containers/*/*-json.log
+    pipeline_stages:
+      - docker: {}
+      - regex:
+          expression: '^(?P<log>.*)$'
+      - labels:
+          container_name:
+          container_id:
+
+  # ========================================================================
+  # Nginx Access Logs
+  # ========================================================================
+  - job_name: nginx-access
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx
+          app: void-cloud-ide
+          component: nginx
+          __path__: /var/log/void/nginx/access.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<ip>\S+) \S+ \S+ \[(?P<timestamp>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) \S+" (?P<status>\d+) \d+ "(?P<referrer>[^"]*)" "(?P<agent>[^"]*)"$'
+      - labels:
+          ip:
+          method:
+          path:
+          status:
+      - timestamp:
+          source: timestamp
+          format: "02/Jan/2006:15:04:05 -0700"
+
+  # ========================================================================
+  # Nginx Error Logs
+  # ========================================================================
+  - job_name: nginx-error
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx-error
+          app: void-cloud-ide
+          component: nginx
+          severity: error
+          __path__: /var/log/void/nginx/error.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<level>\w+)\] (?P<pid>\d+)#(?P<tid>\d+):?\*(?P<cid>\d+)? ?(?P<message>.*)$'
+      - labels:
+          level:
+          pid:
+
+  # ========================================================================
+  # System Logs
+  # ========================================================================
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: system
+          __path__: /var/log/void/*.log

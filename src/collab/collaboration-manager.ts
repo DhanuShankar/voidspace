@@ -290,8 +290,10 @@ export class CollaborationManager {
    * Create collaboration room
    */
   async createRoom(config: RoomConfig): Promise<Room> {
-    // Register document with manager
-    await this.createDocument(config.documentId);
+    // Register document with manager only if not already present
+    if (!this.documents.has(config.documentId)) {
+      await this.createDocument(config.documentId);
+    }
 
     // Create room via room manager
     const room = this.roomManager.createRoom(config);
@@ -311,7 +313,7 @@ export class CollaborationManager {
    * Join room
    */
   async joinRoom(roomId: string, userId: string, userName: string): Promise<boolean> {
-    const room = this.rooms.get(roomId);
+    const room = this.roomManager.getRoom(roomId);
     if (!room) return false;
 
     // Ensure user has presence
@@ -445,7 +447,7 @@ export class CollaborationManager {
   } {
     return {
       documents: this.documents.size,
-      rooms: this.rooms.size,
+      rooms: this.roomManager.getAllRooms().length,
       activeUsers: this.presenceManager.getStats().activeUsers,
       offlineQueues: this.offlineQueue.size,
     };

@@ -26,12 +26,40 @@ interface Session {
 }
 
 /**
+ * Resolve the JWT secret, with a hard warning in production if not set.
+ * In development a random per-process secret is generated so tokens are
+ * invalidated on restart — that is intentional and safe.
+ */
+function getJwtSecret(): string {
+  const envSecret = process.env.JWT_SECRET;
+  if (envSecret) return envSecret;
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'JWT_SECRET environment variable is required in production. ' +
+      'Set a strong random value (e.g. `openssl rand -hex 64`) in your .env file.'
+    );
+  }
+
+  // Development-only ephemeral secret — rotates on every server restart.
+  if (!_devSecret) {
+    _devSecret = require('crypto').randomBytes(64).toString('hex');
+    console.warn(
+      '⚠  JWT_SECRET not set — using a per-process ephemeral secret (dev only). ' +
+      'All tokens will be invalidated on server restart.'
+    );
+  }
+  return _devSecret;
+}
+let _devSecret: string | null = null;
+
+/**
  * Generate JWT token
  */
 export function generateToken(userId: string): string {
   return jwt.sign(
     { userId },
-    process.env.JWT_SECRET || 'void-secret-key',
+    getJwtSecret(),
     { expiresIn: '7d' }
   );
 }
@@ -41,7 +69,7 @@ export function generateToken(userId: string): string {
  */
 export function verifyToken(token: string): any {
   try {
-    return jwt.verify(token, process.env.JWT_SECRET || 'void-secret-key');
+    return jwt.verify(token, getJwtSecret());
   } catch (error) {
     return null;
   }

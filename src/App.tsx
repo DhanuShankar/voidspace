@@ -16,7 +16,24 @@ import { DeployModal } from './components/DeployModal';
 import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
 import { useStore } from './store';
-import { PanelLeft } from 'lucide-react';
+import {
+  PanelLeft,
+  Search,
+  Command,
+  Sparkles,
+  CloudUpload,
+  Cloud,
+  Play,
+  Files,
+  GitBranch,
+  Blocks,
+  Terminal as TerminalIcon,
+  MessageSquare,
+  Settings,
+  Code,
+  AlertCircle,
+  Zap,
+} from 'lucide-react';
 import { cn } from './lib/utils';
 
 export default function App() {

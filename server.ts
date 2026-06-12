@@ -520,12 +520,16 @@ async function startServer() {
     }
   });
 
-  app.post("/api/collab/room/:roomId/join", authMiddleware, (req, res) => {
+  app.post("/api/collab/room/:roomId/join", authMiddleware, async (req: any, res) => {
     try {
       const { roomId } = req.params;
       const user = getUserById(req.userId);
 
-      const success = collabManager.joinRoom(roomId, user.id, user.name);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const success = await collabManager.joinRoom(roomId, user.id, user.name);
 
       res.json({ success, roomId });
     } catch (error: any) {
@@ -596,10 +600,13 @@ async function startServer() {
     }
   });
 
-   app.post("/api/collab/invite/use", authMiddleware, (req, res) => {
+   app.post("/api/collab/invite/use", authMiddleware, (req: any, res) => {
      try {
        const { token } = req.body;
        const user = getUserById(req.userId);
+       if (!user) {
+         return res.status(404).json({ error: "User not found" });
+       }
        const success = collabManager.useInviteToken(token, user.id, user.name);
        res.json({ success });
      } catch (error: any) {
